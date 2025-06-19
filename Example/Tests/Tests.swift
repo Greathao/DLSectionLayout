@@ -1,6 +1,5 @@
 import XCTest
-import DLSectionLayout
-
+ 
 class Tests: XCTestCase {
     
     override func setUp() {

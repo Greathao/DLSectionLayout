@@ -1,0 +1,34 @@
+{
+  "name": "DLSectionLayout",
+  "version": "0.1.0",
+  "summary": "A flexible UICollectionView layout supporting section backgrounds and rounded corners.",
+  "description": "DLSectionLayout is a powerful and flexible UICollectionView layout that supports section backgrounds, rounded corners, insets, and custom decoration views.  \nIdeal for building modern, beautiful collection view interfaces with section separation and visual styling.",
+  "homepage": "https://github.com/DLSectionLayout/DLSectionLayout",
+  "license": {
+    "type": "MIT",
+    "file": "LICENSE"
+  },
+  "authors": {
+    "DLSectionLayout": "704550535@qq.com"
+  },
+  "source": {
+    "git": "https://github.com/DLSectionLayout/DLSectionLayout.git",
+    "tag": "0.1.0"
+  },
+  "platforms": {
+    "ios": "10.0"
+  },
+  "source_files": "Sources/Classes/**/*.{swift}",
+  "resource_bundles": {
+    "DLSectionLayout": [
+      "Sources/Assets/**/*"
+    ]
+  },
+  "swift_versions": "5.0",
+  "dependencies": {
+    "Kingfisher": [
+      "~> 6.0"
+    ]
+  },
+  "swift_version": "5.0"
+}
