@@ -8,7 +8,7 @@
 
 Pod::Spec.new do |s|
   s.name             = 'DLSectionLayout'
-  s.version          = '0.1.0'
+  s.version          = '0.1.1'
   s.summary          = '支持 Section 背景图和圆角的灵活 UICollectionViewLayout 布局库'
 
   s.description      = <<-DESC
