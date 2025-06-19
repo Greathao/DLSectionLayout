@@ -30,14 +30,6 @@ public  class DLSectionLayout: UICollectionViewLayout {
     /// 默认的列间距
     var minimumInteritemSpacing: CGFloat = 7.0
     
-    
-    // 缓存 item size 和 section 配置
-    private var itemSizeCache: [IndexPath: CGSize] = [:]
-    private var sectionConfigCache: [Int: (headerHeight: CGFloat, footerHeight: CGFloat, insets: UIEdgeInsets, cornerRadii: DLCornerRadii, rows: Int, columns: Int, isWaterfall: Bool, layoutDirection: DLSectionLayoutDirection, minimumLineSpacing: CGFloat, minimumInteritemSpacing: CGFloat)] = [:]
-    // 标记是否需要重新计算布局
-    private var needsRecalculate: Bool = true
-    
-    
     public override init() {
         super.init()
         // 注册 decoration 背景视图
@@ -49,128 +41,78 @@ public  class DLSectionLayout: UICollectionViewLayout {
     }
     /// 每次 layout 更新前都会调用，用于准备所有布局信息
     public override func prepare() {
-            super.prepare()
-            guard let collectionView = collectionView else { return }
-
-            if !needsRecalculate {
-                // 如果不需要重新计算，直接返回缓存
-                return
+        super.prepare()
+        guard let collectionView = collectionView else { return }
+        // 清空缓存和旧数据
+        cache.removeAll()
+        geometryManager.reset()
+        contentHeight = 0
+        
+        let numberOfSections = collectionView.numberOfSections
+        
+        for section in 0..<numberOfSections {
+            let numberOfItems = collectionView.numberOfItems(inSection: section)
+            let minimumLineSpacingThisSection = delegate?.collectionView(collectionView, layout: self, minimumLineSpacingForSectionAt: section) ?? self.minimumLineSpacing
+            let minimumInteritemSpacingThisSection = delegate?.collectionView(collectionView, layout: self, minimumInteritemSpacingForSectionAt: section) ?? self.minimumInteritemSpacing
+            let headerHeight = delegate?.collectionView(collectionView, layout: self, referenceSizeForHeaderInSection: section) ?? 0
+            let footerHeight = delegate?.collectionView(collectionView, layout: self, referenceSizeForFooterInSection: section) ?? 0
+            let containerInsets = delegate?.collectionView(collectionView, layout: self, containerInsetsForSection: section) ?? self.sectionInset
+            let cornerRadii = delegate?.collectionView(collectionView, layout: self, cornerRadiiForSection: section) ?? DLCornerRadii.zero
+            
+            let sectionStartY = contentHeight
+            var currentY = sectionStartY + containerInsets.top
+            let contentWidthWithoutInset = contentWidth - containerInsets.left - containerInsets.right
+            
+            // 构建 Header 属性
+            if headerHeight > 0 {
+                let headerIndexPath = IndexPath(item: 0, section: section)
+                let headerAttr = DLRoundedLayoutAttributes(forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, with: headerIndexPath)
+                headerAttr.frame = CGRect(x: containerInsets.left, y: currentY, width: contentWidthWithoutInset, height: headerHeight)
+                headerAttr.zIndex = 3
+                headerAttr.sectionIndex = section
+                cache.append(headerAttr)
+                geometryManager.addItem(headerAttr, forSection: section)
             }
-
-            cache.removeAll()
-            geometryManager.reset()
-            contentHeight = 0
-            itemSizeCache.removeAll()
-            sectionConfigCache.removeAll()
-
-            let numberOfSections = collectionView.numberOfSections
-
-            for section in 0..<numberOfSections {
-                let numberOfItems = collectionView.numberOfItems(inSection: section)
-
-                // 读取并缓存 section 配置，减少多次调用
-                let headerHeight = delegate?.collectionView(collectionView, layout: self, referenceSizeForHeaderInSection: section) ?? 0
-                let footerHeight = delegate?.collectionView(collectionView, layout: self, referenceSizeForFooterInSection: section) ?? 0
-                let containerInsets = delegate?.collectionView(collectionView, layout: self, containerInsetsForSection: section) ?? sectionInset
-                let cornerRadii = delegate?.collectionView(collectionView, layout: self, cornerRadiiForSection: section) ?? DLCornerRadii.zero
-                let layoutDirection = delegate?.collectionView(collectionView, layout: self, layoutDirectionForSection: section) ?? .vertical
-                let rows = delegate?.collectionView(collectionView, layout: self, numberOfRowsInSection: section) ?? 1
-                let columns = delegate?.collectionView(collectionView, layout: self, numberOfColumnsInSection: section) ?? 1
-                let isWaterfall = delegate?.collectionView(collectionView, layout: self, isWaterfallFlowForSection: section) ?? false
-                let minimumLineSpacing = delegate?.collectionView(collectionView, layout: self, minimumLineSpacingForSectionAt: section) ?? minimumLineSpacing
-                let minimumInteritemSpacing = delegate?.collectionView(collectionView, layout: self, minimumInteritemSpacingForSectionAt: section) ?? minimumInteritemSpacing
-
-                sectionConfigCache[section] = (headerHeight, footerHeight, containerInsets, cornerRadii, rows, columns, isWaterfall, layoutDirection, minimumLineSpacing, minimumInteritemSpacing)
-
-                let sectionStartY = contentHeight
-                var currentY = sectionStartY + containerInsets.top
-                let contentWidthWithoutInset = contentWidth - containerInsets.left - containerInsets.right
-
-                // Header
-                if headerHeight > 0 {
-                    let headerIndexPath = IndexPath(item: 0, section: section)
-                    let headerAttr = DLRoundedLayoutAttributes(forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, with: headerIndexPath)
-                    headerAttr.frame = CGRect(x: containerInsets.left, y: currentY, width: contentWidthWithoutInset, height: headerHeight)
-                    headerAttr.zIndex = 3
-                    headerAttr.sectionIndex = section
-                    cache.append(headerAttr)
-                    geometryManager.addItem(headerAttr, forSection: section)
-                }
-                currentY += headerHeight
-
-                switch layoutDirection {
-                case .vertical:
-                    if isWaterfall {
-                        var columnHeights = Array(repeating: currentY, count: columns)
-                        for itemIndex in 0..<numberOfItems {
-                            let indexPath = IndexPath(item: itemIndex, section: section)
-                            let itemSize: CGSize
-                            if let cachedSize = itemSizeCache[indexPath] {
-                                itemSize = cachedSize
-                            } else {
-                                itemSize = delegate?.collectionView(collectionView, layout: self, sizeForItemAt: indexPath) ?? .zero
-                                itemSizeCache[indexPath] = itemSize
-                            }
-
-                            let attr = DLRoundedLayoutAttributes(forCellWith: indexPath)
-                            let minColumnIndex = columnHeights.enumerated().min(by: { $0.element < $1.element })?.offset ?? 0
-                            let x = containerInsets.left + CGFloat(minColumnIndex) * (itemSize.width + minimumInteritemSpacing)
-                            let currentColumnY = columnHeights[minColumnIndex]
-                            let y = (currentColumnY == currentY) ? currentColumnY : currentColumnY + minimumLineSpacing
-                            attr.frame = CGRect(x: x, y: y, width: itemSize.width, height: itemSize.height)
-                            attr.zIndex = 4
-                            attr.sectionIndex = section
-                            cache.append(attr)
-                            geometryManager.addItem(attr, forSection: section)
-                            columnHeights[minColumnIndex] = attr.frame.maxY
-                        }
-                        currentY = columnHeights.max() ?? currentY
-                    } else {
-                        for row in 0..<rows {
-                            for col in 0..<columns {
-                                let itemIndex = row * columns + col
-                                if itemIndex >= numberOfItems { continue }
-                                let indexPath = IndexPath(item: itemIndex, section: section)
-                                let itemSize: CGSize
-                                if let cachedSize = itemSizeCache[indexPath] {
-                                    itemSize = cachedSize
-                                } else {
-                                    itemSize = delegate?.collectionView(collectionView, layout: self, sizeForItemAt: indexPath) ?? .zero
-                                    itemSizeCache[indexPath] = itemSize
-                                }
-
-                                let attr = DLRoundedLayoutAttributes(forCellWith: indexPath)
-                                let x = containerInsets.left + CGFloat(col) * (itemSize.width + minimumInteritemSpacing)
-                                let y = currentY + CGFloat(row) * (itemSize.height + minimumLineSpacing)
-                                attr.frame = CGRect(x: x, y: y, width: itemSize.width, height: itemSize.height)
-                                attr.zIndex = 4
-                                attr.sectionIndex = section
-                                cache.append(attr)
-                                geometryManager.addItem(attr, forSection: section)
-                            }
-                        }
-                        if rows > 0 {
-                            let firstIndexPath = IndexPath(item: 0, section: section)
-                            let itemHeight = itemSizeCache[firstIndexPath]?.height ?? 0
-                            currentY += CGFloat(rows) * itemHeight + CGFloat(max(rows - 1, 0)) * minimumLineSpacing
-                        }
+            currentY += headerHeight
+            
+           // 获取布局方向（横向/竖向）、行列数、是否瀑布流
+            let direction = delegate?.collectionView(collectionView, layout: self, layoutDirectionForSection: section) ?? .vertical
+            let rows = delegate?.collectionView(collectionView, layout: self, numberOfRowsInSection: section) ?? 1
+            let columns = delegate?.collectionView(collectionView, layout: self, numberOfColumnsInSection: section) ?? 1
+            let isWaterfall = delegate?.collectionView(collectionView, layout: self, isWaterfallFlowForSection: section) ?? false
+            
+            switch direction {
+            case .vertical:
+                if isWaterfall {
+                    // 竖向瀑布流布局
+                    var columnHeights = Array(repeating: currentY, count: columns)
+                    for itemIndex in 0..<numberOfItems {
+                        let indexPath = IndexPath(item: itemIndex, section: section)
+                        let itemSize = delegate?.collectionView(collectionView, layout: self, sizeForItemAt: indexPath) ?? .zero
+                        let attr = DLRoundedLayoutAttributes(forCellWith: indexPath)
+                        let minColumnIndex = columnHeights.enumerated().min(by: { $0.element < $1.element })?.offset ?? 0
+                        let x = containerInsets.left + CGFloat(minColumnIndex) * (itemSize.width + minimumInteritemSpacingThisSection)
+                        let currentColumnY = columnHeights[minColumnIndex]
+                        let y = (currentColumnY == currentY) ? currentColumnY : currentColumnY + minimumLineSpacingThisSection
+                        attr.frame = CGRect(x: x, y: y, width: itemSize.width, height: itemSize.height)
+                        attr.zIndex = 4
+                        attr.sectionIndex = section
+                        cache.append(attr)
+                        geometryManager.addItem(attr, forSection: section)
+                        columnHeights[minColumnIndex] = attr.frame.maxY
                     }
-                case .horizontal:
-                    for col in 0..<columns {
-                        for row in 0..<rows {
-                            let itemIndex = col * rows + row
+                    currentY = columnHeights.max() ?? currentY
+                } else {
+                    // 普通竖向布局（固定行列）
+                    for row in 0..<rows {
+                        for col in 0..<columns {
+                            let itemIndex = row * columns + col
                             if itemIndex >= numberOfItems { continue }
                             let indexPath = IndexPath(item: itemIndex, section: section)
-                            let itemSize: CGSize
-                            if let cachedSize = itemSizeCache[indexPath] {
-                                itemSize = cachedSize
-                            } else {
-                                itemSize = delegate?.collectionView(collectionView, layout: self, sizeForItemAt: indexPath) ?? .zero
-                                itemSizeCache[indexPath] = itemSize
-                            }
+                            let itemSize = delegate?.collectionView(collectionView, layout: self, sizeForItemAt: indexPath) ?? .zero
                             let attr = DLRoundedLayoutAttributes(forCellWith: indexPath)
-                            let x = containerInsets.left + CGFloat(col) * (itemSize.width + minimumInteritemSpacing)
-                            let y = currentY + CGFloat(row) * (itemSize.height + minimumLineSpacing)
+                            let x = containerInsets.left + CGFloat(col) * (itemSize.width + minimumInteritemSpacingThisSection)
+                            let y = currentY + CGFloat(row) * (itemSize.height + minimumLineSpacingThisSection)
                             attr.frame = CGRect(x: x, y: y, width: itemSize.width, height: itemSize.height)
                             attr.zIndex = 4
                             attr.sectionIndex = section
@@ -178,42 +120,63 @@ public  class DLSectionLayout: UICollectionViewLayout {
                             geometryManager.addItem(attr, forSection: section)
                         }
                     }
+                    let itemHeight = delegate?.collectionView(collectionView, layout: self, sizeForItemAt: IndexPath(item: 0, section: section)).height ?? 0
                     if rows > 0 {
-                        let firstIndexPath = IndexPath(item: 0, section: section)
-                        let itemHeight = itemSizeCache[firstIndexPath]?.height ?? 0
-                        currentY += CGFloat(rows) * itemHeight + CGFloat(max(rows - 1, 0)) * minimumLineSpacing
+                        currentY += CGFloat(rows) * itemHeight + CGFloat(max(rows - 1, 0)) * minimumLineSpacingThisSection
+                    }
+                    
+                }
+            case .horizontal:
+                // 横向布局
+                for col in 0..<columns {
+                    for row in 0..<rows {
+                        let itemIndex = col * rows + row
+                        if itemIndex >= numberOfItems { continue }
+                        let indexPath = IndexPath(item: itemIndex, section: section)
+                        let itemSize = delegate?.collectionView(collectionView, layout: self, sizeForItemAt: indexPath) ?? .zero
+                        let attr = DLRoundedLayoutAttributes(forCellWith: indexPath)
+                        let x = containerInsets.left + CGFloat(col) * (itemSize.width + minimumInteritemSpacingThisSection)
+                        let y = currentY + CGFloat(row) * (itemSize.height + minimumLineSpacingThisSection)
+                        attr.frame = CGRect(x: x, y: y, width: itemSize.width, height: itemSize.height)
+                        attr.zIndex = 4
+                        attr.sectionIndex = section
+                        cache.append(attr)
+                        geometryManager.addItem(attr, forSection: section)
                     }
                 }
-
-                // Footer
-                if footerHeight > 0 {
-                    let footerIndexPath = IndexPath(item: 0, section: section)
-                    let footerAttr = DLRoundedLayoutAttributes(forSupplementaryViewOfKind: UICollectionView.elementKindSectionFooter, with: footerIndexPath)
-                    footerAttr.frame = CGRect(x: containerInsets.left, y: currentY, width: contentWidthWithoutInset, height: footerHeight)
-                    footerAttr.zIndex = 3
-                    footerAttr.sectionIndex = section
-                    cache.append(footerAttr)
-                    geometryManager.addItem(footerAttr, forSection: section)
+                let itemHeight = delegate?.collectionView(collectionView, layout: self, sizeForItemAt: IndexPath(item: 0, section: section)).height ?? 0
+                if rows > 0 {
+                    currentY += CGFloat(rows) * itemHeight + CGFloat(max(rows - 1, 0)) * minimumLineSpacingThisSection
                 }
-                currentY += footerHeight
-
-                // Decoration 背景
-                let decorationAttr = DLSectionBackgroundLayoutAttributes(forDecorationViewOfKind: DLSectionBackgroundView.kind, with: IndexPath(item: 0, section: section))
-                decorationAttr.frame = CGRect(x: 0, y: sectionStartY, width: contentWidth, height: (currentY - sectionStartY) + containerInsets.bottom)
-                decorationAttr.zIndex = 0
-                decorationAttr.containerInsets = containerInsets
-                decorationAttr.cornerRadii = cornerRadii
-                decorationAttr.backgroundGradient = delegate?.collectionView(collectionView, layout: self, backgroundColorForSection: section)
-                decorationAttr.backgroundImageURLString = delegate?.collectionView(collectionView, layout: self, backgroundImageURLStringForSection: section)
-                cache.append(decorationAttr)
-
-                contentHeight = currentY + containerInsets.bottom
+             }
+            
+            // Footer
+            if footerHeight > 0 {
+                let footerIndexPath = IndexPath(item: 0, section: section)
+                let footerAttr = DLRoundedLayoutAttributes(forSupplementaryViewOfKind: UICollectionView.elementKindSectionFooter, with: footerIndexPath)
+                footerAttr.frame = CGRect(x: containerInsets.left, y: currentY, width: contentWidthWithoutInset, height: footerHeight)
+                footerAttr.zIndex = 3
+                footerAttr.sectionIndex = section
+                cache.append(footerAttr)
+                geometryManager.addItem(footerAttr, forSection: section)
             }
-
-            calculateRoundingCorners()
-
-            needsRecalculate = false
+            currentY += footerHeight
+            
+            // Decoration 背景
+            let decorationAttr = DLSectionBackgroundLayoutAttributes(forDecorationViewOfKind: DLSectionBackgroundView.kind, with: IndexPath(item: 0, section: section))
+            decorationAttr.frame = CGRect(x: 0, y: sectionStartY, width: contentWidth, height: (currentY - sectionStartY) + containerInsets.bottom)
+            decorationAttr.zIndex = 0
+            decorationAttr.containerInsets = containerInsets
+            decorationAttr.cornerRadii = cornerRadii
+            decorationAttr.backgroundGradient = delegate?.collectionView(collectionView, layout: self, backgroundColorForSection: section)
+            decorationAttr.backgroundImageURLString = delegate?.collectionView(collectionView, layout: self, backgroundImageURLStringForSection: section)
+            cache.append(decorationAttr)
+            
+            contentHeight = currentY + containerInsets.bottom
         }
+       // 计算每个元素的圆角信息
+        calculateRoundingCorners()
+    }
  
     private func calculateRoundingCorners() {
         guard let collectionView = collectionView else { return }
