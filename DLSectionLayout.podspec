@@ -22,7 +22,7 @@ DLSectionLayout 是一个灵活强大的 UICollectionView 布局解决方案，�
   s.author           = { 'DLSectionLayout' => '704550535@qq.com' }
   s.source           = { :git => 'https://github.com/Greathao/DLSectionLayout.git', :tag => s.version.to_s }
 
-  s.ios.deployment_target = '10.0'
+  s.ios.deployment_target = '12.0'
   s.swift_version = '5.0'
 
   # 主体代码

@@ -70,7 +70,7 @@ pod install
 
 ## 📱 Requirements
 
-- iOS 10.0+
+- iOS 12.0+
 - Swift 5.0+
 - Xcode 12+
 
